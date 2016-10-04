@@ -263,7 +263,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                   params.put("latitud",la);
                   params.put("longitud",lo);
 
-//hola
+
 
 
 
@@ -280,7 +280,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         requestQueue.add(stringRequest);
     }
     public void todoslossitios(){
-
+//prueba
         final ubicacion ubi =new ubicacion(this);
         final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
         StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url2,
