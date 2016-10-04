@@ -262,7 +262,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                  String lo=String.valueOf(ubi.lo);
                   params.put("latitud",la);
                   params.put("longitud",lo);
-
+//
 
 
 
