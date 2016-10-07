@@ -1,13 +1,18 @@
 package gomez.alejandro.teconfortas;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.AsyncTask;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.widget.DrawerLayout;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -16,31 +21,74 @@ import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.ImageLoader;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import Modulos.DataParser;
+
+
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
-    String la="";
+    ListView list;
+    public static Polyline ruta;
+    public static boolean bandera=false;
+    String[] itemname ={ "Hoteles cercas de mi", "Todos los hoteles", "Restaurantes cercas de mi","Todos los restaurantes","Busqueda personalizada","Calificar Sitio"  };
+    Button btnruta;
+    Integer[] imgid= {
+            R.drawable.markhotel,
+            R.drawable.markhotel,
+            R.drawable.restaurantmarker,
+            R.drawable.restaurantmarker,
+            R.drawable.restaurantmarker,
+            R.drawable.mr_ic_play_dark,
+    };
+
+            String la="";
     String lo="";
     String server_url="http://teconfortascolima.esy.es/webservice/servicios/sitioscercas.php";
     String server_url2="http://teconfortascolima.esy.es/webservice/servicios/todoslossitios.php";
+    String server_url3="http://teconfortascolima.esy.es/webservice/servicios/informacionmarker.php";
+    String server_url4="http://teconfortascolima.esy.es/webservice/servicios/todoslosrestaurantes.php";
+    String server_url5="http://teconfortascolima.esy.es/webservice/servicios/restaurantescercas.php";
     private RequestQueue requestQueue;
+    private ImageLoader mImageloader;
+
+
+
+    ListView listView;
+    DrawerLayout drawerLayout;
+    Button btn;
+private Marker MI;
 
 
     private GoogleMap mMap;
@@ -53,36 +101,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
-        ListView listView = (ListView) findViewById(R.id.list_view);
-       final DrawerLayout drawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
-       final  String[] opciones = { "Sitios cercas de mi", "Todos los sitios de colima", "Buscar por filtro", "Calificar Sitio" };
-        listView.setAdapter(new ArrayAdapter(this,
-                android.R.layout.simple_list_item_1, android.R.id.text1,
-                opciones));
+        CustomListAdapter adapter=new CustomListAdapter(this, itemname, imgid);
+        list=(ListView)findViewById(R.id.list_view);
+        list.setAdapter(adapter);
+      btn=(Button)findViewById(R.id.btncal);
+         listView = (ListView) findViewById(R.id.list_view);
+        drawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
+btn.setOnClickListener(new View.OnClickListener() {
+    @Override
+    public void onClick(View v) {
 
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        mMap.clear();
+        contorno();
+        sitioscercas();
+    }
+});
 
-            @Override
-            public void onItemClick(AdapterView arg0, View arg1, int arg2,
-                                    long arg3) {
-                Toast.makeText(MapsActivity.this, "Item: " + opciones[arg2],
-                        Toast.LENGTH_SHORT).show();
-                drawerLayout.closeDrawers();
-                if(opciones[arg2]=="Sitios cercas de mi"){
-                    mMap.clear();
-                    contorno();
-                   sitioscercas();
-                }
-                else{
-                    if(opciones[arg2]=="Todos los sitios de colima"){
-                        mMap.clear();
-                        contorno();
-                        todoslossitios();
-                    }
 
-                }
-            }
-        });
            }
 
 
@@ -116,8 +151,83 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
         }
+        mMap.setOnInfoWindowClickListener(new GoogleMap.OnInfoWindowClickListener() {
+            @Override
+            public void onInfoWindowClick(Marker marker) {
+                String n=marker.getTitle();
+
+                Toast.makeText(getApplicationContext(),n,Toast.LENGTH_LONG).show();
+                obtiene(n);
+
+            }
+        });
+
+        mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
+            @Override
+            public boolean onMarkerClick(Marker marker) {
+                Toast.makeText(getApplicationContext(),"tocaste",Toast.LENGTH_LONG).show();
+                marker.showInfoWindow();
+                latlon(marker.getTitle());
+                return true;
+
+            }
+        });
+
+
+       // final  String[] opciones = { "Hoteles cercas de mi", "Todos los hoteles", "Restaurantes cercas de mi", "Todos los restaurantes","Busqueda Personalizada","Calificar Sitio" };
+        // listView.setAdapter(new ArrayAdapter(this,
+             //   R.layout.list_white_color, R.id.list_content,
+            //    opciones));
+
+
+
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+            @Override
+            public void onItemClick(AdapterView arg0, View arg1, int arg2,
+                                    long arg3) {
+                Toast.makeText(MapsActivity.this, "Item: " +itemname[arg2],
+                        Toast.LENGTH_SHORT).show();
+                drawerLayout.closeDrawers();
+                if(arg2==0){
+                    mMap.clear();
+                    contorno();
+                    sitioscercas();
+                }
+                else{
+                    if(arg2==1){
+                        mMap.clear();
+                        contorno();
+                        todoslossitios();
+                    }else{
+                        if(arg2==5){
+
+                            Intent i=new Intent(MapsActivity.this,QRActivity.class);
+                            MapsActivity.this.startActivity(i);
+                        }else{
+                            if(arg2==3){
+                                mMap.clear();
+                                contorno();
+                                todoslosrestaurantes();
+                            }else{
+                                if(arg2==2){
+                                    mMap.clear();
+                                    contorno();
+                                    restaurantescercas();
+                                }
+                            }
+                        }
+
+                    }
+
+                }
+            }
+        });
+
 
     }
+
 
     public void contorno(){
 
@@ -233,7 +343,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 Double longi=Double.valueOf(lon);
                                 //  Toast.makeText(getApplicationContext(),"nombre:"+name+" lat:"+lat+" long:"+lon+ "\n",Toast.LENGTH_LONG).show();
                                 LatLng pos = new LatLng(lati, longi);
-                                mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" Mts").icon(BitmapDescriptorFactory.fromResource(R.drawable.markhotel)));
+                               mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" Mts").icon(BitmapDescriptorFactory.fromResource(R.drawable.markhotel)));
 
                             }
                         } catch (JSONException e) {
@@ -279,8 +389,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         };
         requestQueue.add(stringRequest);
     }
-    public void todoslossitios(){
+
+        public void todoslossitios(){
 //prueba
+
         final ubicacion ubi =new ubicacion(this);
         final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
         StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url2,
@@ -301,7 +413,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 Double longi=Double.valueOf(lon);
                                 //  Toast.makeText(getApplicationContext(),"nombre:"+name+" lat:"+lat+" long:"+lon+ "\n",Toast.LENGTH_LONG).show();
                                 LatLng pos = new LatLng(lati, longi);
-                                mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" Mts").icon(BitmapDescriptorFactory.fromResource(R.drawable.markhotel)));
+                               mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" Mts").icon(BitmapDescriptorFactory.fromResource(R.drawable.markhotel)));
 
                             }
                         } catch (JSONException e) {
@@ -349,6 +461,452 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
+    public void obtiene(final String nombre){
+//prueba
 
 
-}
+
+        final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
+        StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url3,
+
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+
+                        try {
+                            JSONArray jsonArray = new JSONArray(response);
+                            for(int i=0; i<jsonArray.length();i++){
+                                JSONObject sitios=jsonArray.getJSONObject(i);
+                                String name=sitios.getString("nombre");
+                                String imagen=sitios.getString("imagen");
+                                String descripcion=sitios.getString("descripcion");
+                                String lat=sitios.getString("latitud");
+                                String lon=sitios.getString("longitud");
+
+
+                                  Toast.makeText(getApplicationContext(),imagen,Toast.LENGTH_LONG).show();
+                                Intent nextScreen = new Intent(MapsActivity.this,InformacionActivity.class);
+                                Bundle bundle=new Bundle();
+                                bundle.putString("imagen",imagen);
+                                bundle.putString("nombre",name);
+                                bundle.putString("descripcion",descripcion);
+                                bundle.putString("latitud",lat);
+                                bundle.putString("longitud",lon);
+                                nextScreen.putExtras(bundle);
+                                startActivityForResult(nextScreen, 0);
+
+
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+
+                        requestQueue.stop();
+
+
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Toast.makeText(getApplicationContext(),"error",Toast.LENGTH_LONG).show();
+                error.printStackTrace();
+                requestQueue.stop();
+            }
+
+
+        }){
+            @Override
+            protected Map<String,String> getParams(){
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("nombre",nombre);
+
+
+
+
+
+                return params;
+            }
+
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("Content-Type","application/x-www-form-urlencoded");
+                return params;
+            }
+        };
+        requestQueue.add(stringRequest);
+
+    }
+    public void  todoslosrestaurantes(){
+
+        final ubicacion ubi =new ubicacion(this);
+        final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
+        StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url4,
+
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+
+                        try {
+                            JSONArray jsonArray = new JSONArray(response);
+                            for(int i=0; i<jsonArray.length();i++){
+                                JSONObject sitios=jsonArray.getJSONObject(i);
+                                String name=sitios.getString("nombre");
+                                String lat=sitios.getString("latitud");
+                                String lon=sitios.getString("longitud");
+                                String distancia=sitios.getString("distancia");
+                                Double lati=Double.valueOf(lat);
+                                Double longi=Double.valueOf(lon);
+                                //  Toast.makeText(getApplicationContext(),"nombre:"+name+" lat:"+lat+" long:"+lon+ "\n",Toast.LENGTH_LONG).show();
+                                LatLng pos = new LatLng(lati, longi);
+                                mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" km").icon(BitmapDescriptorFactory.fromResource(R.drawable.restmarker)));
+
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+
+                        requestQueue.stop();
+
+
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Toast.makeText(getApplicationContext(),"error",Toast.LENGTH_LONG).show();
+                error.printStackTrace();
+                requestQueue.stop();
+            }
+
+
+        }){
+            @Override
+            protected Map<String,String> getParams(){
+                Map<String,String> params = new HashMap<String, String>();
+                String la=String.valueOf(ubi.lat);
+                String lo=String.valueOf(ubi.lo);
+                params.put("latitud",la);
+                params.put("longitud",lo);
+
+
+
+
+
+                return params;
+            }
+
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("Content-Type","application/x-www-form-urlencoded");
+                return params;
+            }
+        };
+        requestQueue.add(stringRequest);
+    }
+    public void restaurantescercas(){
+        final ubicacion ubi =new ubicacion(this);
+        final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
+        StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url5,
+
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+
+                        try {
+                            JSONArray jsonArray = new JSONArray(response);
+                            for(int i=0; i<jsonArray.length();i++){
+                                JSONObject sitios=jsonArray.getJSONObject(i);
+                                String name=sitios.getString("nombre");
+                                String lat=sitios.getString("latitud");
+                                String lon=sitios.getString("longitud");
+                                String distancia=sitios.getString("distancia");
+                                Double lati=Double.valueOf(lat);
+                                Double longi=Double.valueOf(lon);
+                                //  Toast.makeText(getApplicationContext(),"nombre:"+name+" lat:"+lat+" long:"+lon+ "\n",Toast.LENGTH_LONG).show();
+                                LatLng pos = new LatLng(lati, longi);
+                                mMap.addMarker(new MarkerOptions().position(pos).title(name).snippet("Distancia: "+distancia+" km").icon(BitmapDescriptorFactory.fromResource(R.drawable.restmarker)));
+
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+
+                        requestQueue.stop();
+
+
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Toast.makeText(getApplicationContext(),"error",Toast.LENGTH_LONG).show();
+                error.printStackTrace();
+                requestQueue.stop();
+            }
+
+
+        }){
+            @Override
+            protected Map<String,String> getParams(){
+                Map<String,String> params = new HashMap<String, String>();
+                String la=String.valueOf(ubi.lat);
+                String lo=String.valueOf(ubi.lo);
+                params.put("latitud",la);
+                params.put("longitud",lo);
+//
+
+
+
+
+                return params;
+            }
+
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("Content-Type","application/x-www-form-urlencoded");
+                return params;
+            }
+        };
+        requestQueue.add(stringRequest);
+    }
+
+
+
+
+    public void latlon(final String nombre){
+//prueba
+
+      final  ubicacion ubi=new ubicacion(this);
+
+        final RequestQueue requestQueue = Volley.newRequestQueue(MapsActivity.this);
+        StringRequest stringRequest = new StringRequest(Request.Method.POST, server_url3,
+
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+
+                        try {
+                            JSONArray jsonArray = new JSONArray(response);
+                            for(int i=0; i<jsonArray.length();i++){
+                                JSONObject sitios=jsonArray.getJSONObject(i);
+                                String name=sitios.getString("nombre");
+                                String lat=sitios.getString("latitud");
+                                String lon=sitios.getString("longitud");
+                                if(bandera==true){
+                                    ruta.setVisible(false);
+                                }
+                               LatLng destino=new LatLng(Double.parseDouble(lat),Double.parseDouble(lon));
+                              LatLng origen=new LatLng(ubi.lat,ubi.lo);
+
+                               // Toast.makeText(getApplicationContext(),"laa: "+latituddestino+" loo: "+longituddestino,Toast.LENGTH_LONG).show();
+                                String url = getUrl(origen, destino);
+                                Log.d("onMapClick", url.toString());
+                                FetchUrl FetchUrl = new FetchUrl();
+                                FetchUrl.execute(url);
+
+
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+
+                        requestQueue.stop();
+
+
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Toast.makeText(getApplicationContext(),"error",Toast.LENGTH_LONG).show();
+                error.printStackTrace();
+                requestQueue.stop();
+            }
+
+
+        }){
+            @Override
+            protected Map<String,String> getParams(){
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("nombre",nombre);
+
+
+
+
+
+                return params;
+            }
+
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String,String> params = new HashMap<String, String>();
+                params.put("Content-Type","application/x-www-form-urlencoded");
+                return params;
+            }
+        };
+        requestQueue.add(stringRequest);
+
+    }
+
+    private String getUrl(LatLng origin, LatLng dest) {
+
+        // Origin of route
+        String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
+        // Destination of route
+        String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+        // Sensor enabled
+        String sensor = "sensor=false";
+        // Building the parameters to the web service
+        String parameters = str_origin + "&" + str_dest + "&" + sensor;
+        // Output format
+        String output = "json";
+        // Building the url to the web service
+        String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters+"&key=AIzaSyCfYUMjL9bQOc58LIUXD2nmGVyOXdjDJvU";
+        return url;
+    }
+    private String downloadUrl(String strUrl) throws IOException {
+        String data = "";
+        InputStream iStream = null;
+        HttpURLConnection urlConnection = null;
+        try {
+            URL url = new URL(strUrl);
+
+            // Creating an http connection to communicate with url
+            urlConnection = (HttpURLConnection) url.openConnection();
+
+            // Connecting to url
+            urlConnection.connect();
+
+            // Reading data from url
+            iStream = urlConnection.getInputStream();
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+
+            StringBuffer sb = new StringBuffer();
+
+            String line = "";
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+
+            data = sb.toString();
+            Log.d("downloadUrl", data.toString());
+            br.close();
+
+        } catch (Exception e) {
+            Log.d("Exception", e.toString());
+        } finally {
+            iStream.close();
+            urlConnection.disconnect();
+        }
+        return data;
+    }
+    private class FetchUrl extends AsyncTask<String, Void, String> {
+
+        @Override
+        protected String doInBackground(String... url) {
+
+            // For storing data from web service
+            String data = "";
+
+            try {
+                // Fetching the data from web service
+                data = downloadUrl(url[0]);
+                Log.d("Background Task data", data.toString());
+            } catch (Exception e) {
+                Log.d("Background Task", e.toString());
+            }
+            return data;
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
+
+            ParserTask parserTask = new ParserTask();
+
+            // Invokes the thread for parsing the JSON data
+            parserTask.execute(result);
+
+        }
+    }
+    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
+
+        // Parsing the data in non-ui thread
+        @Override
+        protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
+
+            JSONObject jObject;
+            List<List<HashMap<String, String>>> routes = null;
+
+            try {
+                jObject = new JSONObject(jsonData[0]);
+                Log.d("ParserTask",jsonData[0].toString());
+                DataParser parser = new DataParser();
+                Log.d("ParserTask", parser.toString());
+
+                // Starts parsing data
+                routes = parser.parse(jObject);
+                Log.d("ParserTask","Executing routes");
+                Log.d("ParserTask",routes.toString());
+
+            } catch (Exception e) {
+                Log.d("ParserTask",e.toString());
+                e.printStackTrace();
+            }
+            return routes;
+        }
+        // Executes in UI thread, after the parsing process
+        @Override
+        protected void onPostExecute(List<List<HashMap<String, String>>> result) {
+            ArrayList<LatLng> points;
+            PolylineOptions lineOptions = null;
+
+            // Traversing through all the routes
+            for (int i = 0; i < result.size(); i++) {
+                points = new ArrayList<>();
+                lineOptions = new PolylineOptions();
+
+                // Fetching i-th route
+                List<HashMap<String, String>> path = result.get(i);
+
+                // Fetching all the points in i-th route
+                for (int j = 0; j < path.size(); j++) {
+                    HashMap<String, String> point = path.get(j);
+
+                    double lat = Double.parseDouble(point.get("lat"));
+                    double lng = Double.parseDouble(point.get("lng"));
+                    LatLng position = new LatLng(lat, lng);
+
+                    points.add(position);
+                }
+
+                // Adding all the points in the route to LineOptions
+                lineOptions.addAll(points);
+                lineOptions.width(10);
+                lineOptions.color(Color.RED);
+
+                Log.d("onPostExecute","onPostExecute lineoptions decoded");
+
+            }
+
+            // Drawing polyline in the Google Map for the i-th route
+            if(lineOptions != null) {
+
+                 ruta=mMap.addPolyline(lineOptions);
+bandera=true;
+
+            }
+            else {
+                Log.d("onPostExecute","without Polylines drawn");
+            }
+        }
+    }
+
+
+
+    }
